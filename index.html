@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Cloud Monitor</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #21262d;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --text: #c9d1d9;
+    --muted: #6e7681;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', monospace; min-height: 100vh; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface);
+  }
+  .logo { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .refresh-info { font-size: 12px; color: var(--muted); }
+  #last-updated { color: var(--text); }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 32px; }
+
+  /* SUMMARY */
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    text-align: center;
+  }
+  .summary-num { font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+  .summary-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .num-green { color: var(--green); }
+  .num-red   { color: var(--red); }
+  .num-blue  { color: var(--accent); }
+
+  /* STATUS BANNER */
+  .banner {
+    border-radius: 6px;
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    display: none;
+  }
+  .banner.all-good  { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3); color: var(--green); display: block; }
+  .banner.has-issue { background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); color: var(--red); display: block; }
+
+  /* CARDS */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; margin-bottom: 32px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .card.up   { border-left: 3px solid var(--green); }
+  .card.down { border-left: 3px solid var(--red); }
+  .card.slow { border-left: 3px solid var(--yellow); }
+  .card.pending { border-left: 3px solid var(--muted); }
+
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .card-name { font-size: 16px; font-weight: 700; }
+  .card-url  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex-shrink: 0;
+  }
+  .dot-up      { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-down    { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+  .dot-slow    { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .dot-pending { background: var(--muted); }
+
+  .card-metrics { display: flex; gap: 24px; margin-bottom: 14px; }
+  .metric-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .metric-value { font-size: 20px; font-weight: 700; }
+
+  /* HISTORY BAR */
+  .history-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  .history-bars { display: flex; gap: 2px; align-items: flex-end; height: 24px; }
+  .bar {
+    flex: 1;
+    border-radius: 1px;
+    min-height: 3px;
+    max-height: 24px;
+  }
+  .bar.up-bar   { background: var(--green); opacity: 0.7; }
+  .bar.down-bar { background: var(--red);   opacity: 0.7; }
+  .bar.slow-bar { background: var(--yellow); opacity: 0.7; }
+  .bar.empty    { background: var(--border); }
+
+  .card-time { font-size: 10px; color: var(--muted); margin-top: 10px; }
+
+  /* LOG TABLE */
+  .section-title { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .log-table th { text-align: left; padding: 8px 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .log-table td { padding: 10px 12px; border-bottom: 1px solid rgba(33,38,45,0.5); }
+  .log-table tr:last-child td { border: none; }
+  .status-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .chip-up   { background: rgba(63,185,80,0.1); color: var(--green); }
+  .chip-down { background: rgba(248,81,73,0.1); color: var(--red); }
+  .chip-slow { background: rgba(210,153,34,0.1); color: var(--yellow); }
+
+  .log-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  #loading { text-align: center; padding: 60px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡ Mini Cloud Monitor <span>v1.0</span></div>
+  <div class="refresh-info">Auto-refresh every 30s &nbsp;|&nbsp; Last updated: <span id="last-updated">—</span></div>
+</header>
+
+<div class="container">
+  <div id="loading">Checking endpoints...</div>
+
+  <div id="main" style="display:none">
+    <div class="summary">
+      <div class="summary-card">
+        <div class="summary-num" id="s-total">—</div>
+        <div class="summary-label">Total Endpoints</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-num num-green" id="s-up">—</div>
+        <div class="summary-label">Online</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-num num-red" id="s-down">—</div>
+        <div class="summary-label">Offline</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-num num-blue" id="s-latency">—</div>
+        <div class="summary-label">Avg Latency (ms)</div>
+      </div>
+    </div>
+
+    <div class="banner" id="banner"></div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="section-title">Live Status Table</div>
+    <div class="log-wrap">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Status</th>
+            <th>Latency</th>
+            <th>Threshold</th>
+            <th>Last Checked</th>
+          </tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+async function fetchData() {
+  const [statusRes, summaryRes] = await Promise.all([
+    fetch('/api/status'),
+    fetch('/api/summary'),
+  ]);
+  return {
+    endpoints: await statusRes.json(),
+    summary: await summaryRes.json(),
+  };
+}
+
+function getState(ep) {
+  if (ep.up === null) return 'pending';
+  if (!ep.up) return 'down';
+  if (ep.latency > ep.threshold) return 'slow';
+  return 'up';
+}
+
+function barClass(entry, threshold) {
+  if (!entry.up) return 'down-bar';
+  if (entry.latency > threshold) return 'slow-bar';
+  return 'up-bar';
+}
+
+function barHeight(entry) {
+  if (!entry || !entry.latency) return '3px';
+  return Math.min(24, Math.max(3, entry.latency / 50)) + 'px';
+}
+
+function render(data) {
+  const { endpoints, summary } = data;
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+  document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+
+  // Summary
+  document.getElementById('s-total').textContent = summary.total;
+  document.getElementById('s-up').textContent = summary.up;
+  document.getElementById('s-down').textContent = summary.down;
+  document.getElementById('s-latency').textContent = summary.avgLatency || '—';
+
+  // Banner
+  const banner = document.getElementById('banner');
+  if (summary.down === 0) {
+    banner.className = 'banner all-good';
+    banner.textContent = '✓ All systems operational';
+  } else {
+    banner.className = 'banner has-issue';
+    banner.textContent = `⚠ ${summary.down} endpoint(s) down`;
+  }
+
+  // Cards
+  const cardsEl = document.getElementById('cards');
+  cardsEl.innerHTML = endpoints.map(ep => {
+    const state = getState(ep);
+    const dotClass = `dot-${state}`;
+    const cardClass = state;
+    const latencyStr = ep.latency != null ? `${ep.latency}ms` : '—';
+    const checkedStr = ep.lastChecked ? new Date(ep.lastChecked).toLocaleTimeString() : 'Pending...';
+
+    const bars = Array(20).fill(null).map((_, i) => {
+      const entry = ep.history[i];
+      if (!entry) return `<div class="bar empty" style="height:3px"></div>`;
+      return `<div class="bar ${barClass(entry, ep.threshold)}" style="height:${barHeight(entry)}"></div>`;
+    }).join('');
+
+    return `
+      <div class="card ${cardClass}">
+        <div class="card-top">
+          <div>
+            <div class="card-name">${ep.name}</div>
+            <div class="card-url">${ep.url}</div>
+          </div>
+          <div class="status-dot ${dotClass}"></div>
+        </div>
+        <div class="card-metrics">
+          <div>
+            <div class="metric-label">Latency</div>
+            <div class="metric-value">${latencyStr}</div>
+          </div>
+          <div>
+            <div class="metric-label">Threshold</div>
+            <div class="metric-value" style="color:var(--muted)">${ep.threshold}ms</div>
+          </div>
+          <div>
+            <div class="metric-label">Status</div>
+            <div class="metric-value" style="color:var(--${state === 'up' ? 'green' : state === 'down' ? 'red' : state === 'slow' ? 'yellow' : 'muted'})">${state.toUpperCase()}</div>
+          </div>
+        </div>
+        <div class="history-label">Last 20 checks</div>
+        <div class="history-bars">${bars}</div>
+        <div class="card-time">Last checked: ${checkedStr}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Table
+  document.getElementById('log-body').innerHTML = endpoints.map(ep => {
+    const state = getState(ep);
+    const chipClass = state === 'up' ? 'chip-up' : state === 'down' ? 'chip-down' : state === 'slow' ? 'chip-slow' : '';
+    const chipLabel = state === 'pending' ? 'PENDING' : state.toUpperCase();
+    return `
+      <tr>
+        <td><strong>${ep.name}</strong></td>
+        <td><span class="status-chip ${chipClass}">${chipLabel}</span></td>
+        <td>${ep.latency != null ? ep.latency + 'ms' : '—'}</td>
+        <td>${ep.threshold}ms</td>
+        <td>${ep.lastChecked ? new Date(ep.lastChecked).toLocaleTimeString() : '—'}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const data = await fetchData();
+    render(data);
+  } catch (e) {
+    console.error('Fetch error:', e);
+  }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
